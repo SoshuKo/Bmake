@@ -1,3 +1,12 @@
+// ゲームの状態
+let gameState = 'playerNameInput'; // playerNameInput, playing, gameOver
+let player1Name = '';
+let player2Name = '';
+let moveHistory = [];
+let woodCount = 3; // 木の数
+let foxPiece = null; // 狐の駒
+let foxPlayer = null; // 狐のプレイヤー
+
 // ゲーム盤の初期状態
 let board = [
   ['車v', '馬v', '槍v', '臣v', '王v', '官v', '弓v', '馬v', '車v'],
@@ -12,7 +21,7 @@ let board = [
 ];
 
 // プレイヤー情報
-let currentPlayer = '^'; // 先手
+let currentPlayer = Math.random() < 0.5 ? '^' : 'v'; // 先手後手ランダム
 let selectedPiece = null;
 let selectedPiecePosition = null;
 
@@ -42,28 +51,19 @@ function isValidMove(piece, from, to) {
 
   for (let m of moves) {
     if (piece === '車v' || piece === '車^' || piece === '狐v' || piece === '狐^' || piece === '臣v' || piece === '臣^') {
-        //車,狐,臣の動きの検証（制限なし）
-        if (move[0] === m[0] || move[1] === m[1]) {
-            if(move[0] === 0 || move[1] === 0){
-                return true;
-            } else if(move[0] === move[1] || move[0] === -move[1]){
-                return true;
-            }
+      //車,狐,臣の動きの検証（制限なし）
+      if (move[0] === m[0] || move[1] === m[1]) {
+        if (move[0] === 0 || move[1] === 0) {
+          return true;
+        } else if (move[0] === move[1] || move[0] === -move[1]) {
+          return true;
         }
+      }
     } else if (move[0] === m[0] && move[1] === m[1]) {
       return true;
     }
   }
   return false;
-}
-
-// 駒の選択
-function selectPiece(row, col) {
-  const piece = board[row][col];
-  if (!piece || piece.indexOf(currentPlayer) === -1) return;
-
-  selectedPiece = piece;
-  selectedPiecePosition = [row, col];
 }
 
 // 駒の選択
@@ -94,7 +94,7 @@ function movePiece(toRow, toCol) {
     // 駒の移動と相手の駒の除去
     board[toRow][toCol] = selectedPiece;
     board[fromRow][fromCol] = null;
-    moveHistory.push(`${selectedPiece}: (${fromRow}, ${fromCol}) -> (${toRow}, ${toCol})`);
+    moveHistory.push(`<span class="math-inline">\{selectedPiece\}\: \(</span>{fromRow}, <span class="math-inline">\{fromCol\}\) \-\> \(</span>{toRow}, ${toCol})`);
     selectedPiece = null;
     selectedPiecePosition = null;
     currentPlayer = currentPlayer === '^' ? 'v' : '^'; // ターン交代
@@ -160,27 +160,16 @@ function checkWin() {
   return true;
 }
 
-// ゲーム盤の表示 (コンソール)
+// ゲーム盤の表示
 function displayBoard() {
-  console.clear();
-  console.log('--- ブマケ ---');
-  console.log(`プレイヤー1: ${player1Name} (${player1Name === currentPlayer ? '手番' : ''})`);
-  console.log(`プレイヤー2: ${player2Name} (${player2Name === currentPlayer ? '手番' : ''})`);
-  console.log('  0 1 2 3 4 5 6 7 8');
-  for (let row = 0; row < 9; row++) {
-    let rowStr = `${row} `;
-    for (let col = 0; col < 9; col++) {
-      rowStr += board[row][col] ? board[row][col].padEnd(3, ' ') : '    ';
-    }
-    console.log(rowStr);
-  }
-  console.log('--- 履歴 ---');
-  moveHistory.forEach((move, index) => console.log(`${index + 1}. ${move}`));
+  drawBoard();
+  displayHistory();
+  displayMessage(`${currentPlayer === '^' ? player2Name : player1Name} の手番です。`);
 }
 
 // メッセージ表示
 function displayMessage(message) {
-  console.log(`--- ${message} ---`);
+  messageElement.textContent = message;
 }
 
 // ゲームのリセット
@@ -189,25 +178,56 @@ function resetGame() {
     gameState = 'playerNameInput';
     player1Name = '';
     player2Name = '';
+    moveHistory = [];
+    woodCount = 3;
+    foxPiece = null;
+    foxPlayer = null;
+    selectedPiece = null;
+    selectedPiecePosition = null;
+    board = [
+      ['車v', '馬v', '槍v', '臣v', '王v', '官v', '弓v', '馬v', '車v'],
+      ['兵v', '兵v', '兵v', '兵v', '盾v', '兵v', '兵v', '兵v', '兵v'],
+      [null, null, null, null, null, null, null, null, null],
+      [null, null, null, null, null, null, null, null, null],
+      [null, '木', null, null, '木', null, null, '木', null],
+      [null, null, null, null, null, null, null, null, null],
+      [null, null, null, null, null, null, null, null, null],
+      ['兵^', '兵^', '兵^', '兵^', '盾^', '兵^', '兵^', '兵^', '兵^'],
+      ['車^', '馬^', '弓^', '官^', '王^', '臣^', '槍^', '馬^', '車^']
+    ];
     displayMessage('プレイヤー名を入力してください。');
+    // プレイヤー名入力欄と開始ボタンを表示
+    player1NameInput.style.display = 'block';
+    player2NameInput.style.display = 'block';
+    startGameButton.style.display = 'block';
+    resetButton.style.display = 'none';
   }
 }
 
 // プレイヤー名の入力
 function setPlayerNames(name1, name2) {
-  if (gameState === 'playerNameInput') {
+  if (gameState === 'playerNameInput' && name1 && name2) {
     player1Name = name1;
     player2Name = name2;
     gameState = 'playing';
     initBoard();
     displayBoard();
+    // プレイヤー名入力欄と開始ボタンを非表示
+    player1NameInput.style.display = 'none';
+    player2NameInput.style.display = 'none';
+    startGameButton.style.display = 'none';
+    resetButton.style.display = 'block';
   }
 }
 
 // ゲームの初期化と開始
 function startGame() {
   displayMessage('プレイヤー名を入力してください。');
-  // ... (HTML のクリックイベントなど)
+  // プレイヤー名入力欄と開始ボタンを表示
+  player1NameInput.style.display = 'block';
+  player2NameInput.style.display = 'block';
+  startGameButton.style.display = 'block';
+  resetButton.style.display = 'none';
 }
 
 // HTML 要素の取得
@@ -281,29 +301,4 @@ function displayBoard() {
 }
 
 // ゲームの初期化と開始
-function startGame() {
-  displayMessage('プレイヤー名を入力してください。');
-  // プレイヤー名入力欄と開始ボタンを表示
-  player1NameInput.style.display = 'block';
-  player2NameInput.style.display = 'block';
-  startGameButton.style.display = 'block';
-  resetButton.style.display = 'none';
-}
-
-// プレイヤー名の設定
-function setPlayerNames(name1, name2) {
-  if (gameState === 'playerNameInput' && name1 && name2) {
-    player1Name = name1;
-    player2Name = name2;
-    gameState = 'playing';
-    initBoard();
-    displayBoard();
-    // プレイヤー名入力欄と開始ボタンを非表示
-    player1NameInput.style.display = 'none';
-    player2NameInput.style.display = 'none';
-    startGameButton.style.display = 'none';
-    resetButton.style.display = 'block';
-  }
-}
-
 startGame();
