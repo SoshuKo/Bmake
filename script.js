@@ -210,7 +210,100 @@ function startGame() {
   // ... (HTML のクリックイベントなど)
 }
 
-startGame();
+// HTML 要素の取得
+const boardElement = document.getElementById('board');
+const messageElement = document.getElementById('message');
+const historyElement = document.getElementById('history');
+const player1NameInput = document.getElementById('player1Name');
+const player2NameInput = document.getElementById('player2Name');
+const startGameButton = document.getElementById('startGame');
+const resetButton = document.getElementById('reset');
 
-// プレイヤー名の入力例
-// setPlayerNames('プレイヤー1', 'プレイヤー2');
+// イベントリスナーの設定
+startGameButton.addEventListener('click', () => {
+  setPlayerNames(player1NameInput.value, player2NameInput.value);
+});
+
+resetButton.addEventListener('click', resetGame);
+
+// 盤面の描画
+function drawBoard() {
+  boardElement.innerHTML = '';
+  for (let row = 0; row < 9; row++) {
+    for (let col = 0; col < 9; col++) {
+      const cell = document.createElement('div');
+      cell.classList.add('cell');
+      cell.dataset.row = row;
+      cell.dataset.col = col;
+      cell.addEventListener('click', handleCellClick);
+
+      const piece = board[row][col];
+      if (piece) {
+        cell.textContent = piece; // 駒の表示
+      }
+      boardElement.appendChild(cell);
+    }
+  }
+}
+
+// セルクリック時の処理
+function handleCellClick(event) {
+  const row = parseInt(event.target.dataset.row);
+  const col = parseInt(event.target.dataset.col);
+
+  if (selectedPiece) {
+    movePiece(row, col);
+  } else {
+    selectPiece(row, col);
+  }
+}
+
+// 履歴の表示
+function displayHistory() {
+  historyElement.innerHTML = '';
+  moveHistory.forEach((move, index) => {
+    const moveItem = document.createElement('li');
+    moveItem.textContent = `${index + 1}. ${move}`;
+    historyElement.appendChild(moveItem);
+  });
+}
+
+// メッセージの表示
+function displayMessage(message) {
+  messageElement.textContent = message;
+}
+
+// ゲーム盤の表示
+function displayBoard() {
+  drawBoard();
+  displayHistory();
+  displayMessage(`${currentPlayer === '^' ? player2Name : player1Name} の手番です。`);
+}
+
+// ゲームの初期化と開始
+function startGame() {
+  displayMessage('プレイヤー名を入力してください。');
+  // プレイヤー名入力欄と開始ボタンを表示
+  player1NameInput.style.display = 'block';
+  player2NameInput.style.display = 'block';
+  startGameButton.style.display = 'block';
+  resetButton.style.display = 'none';
+}
+
+// プレイヤー名の設定
+function setPlayerNames(name1, name2) {
+  if (gameState === 'playerNameInput' && name1 && name2) {
+    player1Name = name1;
+    player2Name = name2;
+    gameState = 'playing';
+    initBoard();
+    displayBoard();
+    // プレイヤー名入力欄と開始ボタンを非表示
+    player1NameInput.style.display = 'none';
+    player2NameInput.style.display = 'none';
+    startGameButton.style.display = 'none';
+    resetButton.style.display = 'block';
+  }
+}
+
+startGame();
