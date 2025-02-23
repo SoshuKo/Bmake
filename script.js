@@ -301,4 +301,13 @@ function displayBoard() {
 }
 
 // ゲームの初期化と開始
+function startGame() {
+  displayMessage('プレイヤー名を入力してください。');
+  // プレイヤー名入力欄と開始ボタンを表示
+  player1NameInput.style.display = 'block';
+  player2NameInput.style.display = 'block';
+  startGameButton.style.display = 'block';
+  resetButton.style.display = 'none';
+  drawBoard(); // ゲーム開始時に盤面を描画
+}
 startGame();
