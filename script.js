@@ -204,6 +204,28 @@ function resetGame() {
   }
 }
 
+// ゲーム盤の初期化
+function initBoard() {
+  board = [
+    ['車v', '馬v', '槍v', '臣v', '王v', '官v', '弓v', '馬v', '車v'],
+    ['兵v', '兵v', '兵v', '兵v', '盾v', '兵v', '兵v', '兵v', '兵v'],
+    [null, null, null, null, null, null, null, null, null],
+    [null, null, null, null, null, null, null, null, null],
+    [null, '木', null, null, '木', null, null, '木', null],
+    [null, null, null, null, null, null, null, null, null],
+    [null, null, null, null, null, null, null, null, null],
+    ['兵^', '兵^', '兵^', '兵^', '盾^', '兵^', '兵^', '兵^', '兵^'],
+    ['車^', '馬^', '弓^', '官^', '王^', '臣^', '槍^', '馬^', '車^']
+  ];
+  currentPlayer = Math.random() < 0.5 ? '^' : 'v'; // 先手後手ランダム
+  selectedPiece = null;
+  selectedPiecePosition = null;
+  moveHistory = [];
+  woodCount = 3;
+  foxPiece = null;
+  foxPlayer = null;
+}
+
 // プレイヤー名の入力
 function setPlayerNames(name1, name2) {
   if (gameState === 'playerNameInput' && name1 && name2) {
