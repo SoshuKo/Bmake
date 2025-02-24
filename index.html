@@ -1,22 +1,779 @@
 <!DOCTYPE html>
-<html>
+<html lang="ja">
 <head>
-  <title>ブマケ</title>
-  <link rel="stylesheet" href="style.css">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ブマケ - ボードゲーム</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+        }
+        .board {
+            display: grid;
+            grid-template-columns: repeat(10, 50px); /* ヘッダー列を追加 */
+            grid-template-rows: repeat(10, 50px); /* ヘッダー行を追加 */
+            gap: 2px;
+            margin: 20px auto;
+            width: max-content;
+        }
+        .cell, .header-cell {
+            width: 50px;
+            height: 50px;
+            border: 1px solid black;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            cursor: pointer;
+        }
+        .piece {
+            font-weight: bold;
+            cursor: grab;
+        }
+        .selected {
+            background-color: lightblue;
+        }
+        .valid-move {
+            background-color: lightgreen;
+        }
+        .board-row {
+            display: contents;
+        }
+        .valid-wood {
+            background-color: pink; /* 木のハイライト色をピンクに設定 */
+        }
+        #victory-modal {
+            text-align: center;
+        }
+    </style>
 </head>
 <body>
-  <div id="game-container">
-    <div id="player-input">
-      <input type="text" id="player1Name" placeholder="プレイヤー1の名前">
-      <input type="text" id="player2Name" placeholder="プレイヤー2の名前">
-      <button id="startGame">ゲーム開始</button>
-      <button id="reset" style="display: none;">リセット</button>
+    <h1>ブマケ</h1>
+    <div class="board" id="board"></div>
+    <div>
+        <button onclick="undoMove()">Undo</button>
+        <button onclick="redoMove()">Redo</button>
+        <button onclick="resetBoard()">Reset</button>
+        <div id="turnDisplay"></div>
+        <button id="resignButton" onclick="resign()">降参</button>
+        <div id="history"></div>
+        <button onclick="toggleHistory()">棋譜表示/非表示</button>
+        <div id="victory-modal" style="display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background-color: white; padding: 20px; border: 1px solid black;">
+            <p id="victory-message"></p>
+            <button id="reset-button">リセット</button>
+        </div>
     </div>
-    <div id="message"></div>
-    <div id="board"></div>
-    <ul id="history"></ul>
-  </div>
-  <script src="script.js"></script>
+    <script>
+        const board = document.getElementById("board");
+        let selectedPiece = null;
+        let selectedCell = null;
+        const initialSetup = [
+            ["▼車", "▼馬", "▼槍", "▼臣", "▼王", "▼官", "▼弓", "▼馬", "▼車"],
+            ["▼兵", "▼兵", "▼兵", "▼兵", "▼盾", "▼兵", "▼兵", "▼兵", "▼兵"],
+            ["", "", "", "", "", "", "", "", ""],
+            ["", "", "", "", "", "", "", "", ""],
+            ["", "×木", "", "", "×木", "", "", "×木", ""],
+            ["", "", "", "", "", "", "", "", ""],
+            ["", "", "", "", "", "", "", "", ""],
+            ["△兵", "△兵", "△兵", "△兵", "△盾", "△兵", "△兵", "△兵", "△兵"],
+            ["△車", "△馬", "△弓", "△官", "△王", "△臣", "△槍", "△馬", "△車"]
+        ];
+
+        function createBoard() {
+            board.innerHTML = "";
+            const headerRow = document.createElement("div");
+            headerRow.classList.add("board-row");
+            headerRow.appendChild(document.createElement("div")); // 空白セル
+            for (let i = 0; i < 9; i++) {
+                const headerCell = document.createElement("div");
+                headerCell.classList.add("header-cell");
+                headerCell.textContent = String.fromCharCode(65 + i); // A, B, C...
+                headerRow.appendChild(headerCell);
+            }
+            board.appendChild(headerRow);
+            for (let row = 0; row < 9; row++) {
+                const boardRow = document.createElement("div");
+                boardRow.classList.add("board-row");
+                const rowHeader = document.createElement("div");
+                rowHeader.classList.add("header-cell");
+                rowHeader.textContent = row + 1;
+                boardRow.appendChild(rowHeader);
+                for (let col = 0; col < 9; col++) {
+                    const cell = document.createElement("div");
+                    cell.classList.add("cell");
+                    cell.dataset.row = row;
+                    cell.dataset.col = col;
+                    if (initialSetup[row][col]) {
+                        const piece = document.createElement("span");
+                        piece.classList.add("piece");
+                        piece.textContent = initialSetup[row][col];
+                        cell.appendChild(piece);
+                    }
+                    cell.addEventListener("click", () => handleCellClick(cell));
+                    boardRow.appendChild(cell);
+                }
+                board.appendChild(boardRow);
+            }
+            updateWoodHighlight(); // 木のハイライトを更新
+            updateTurnDisplay(); // ターン表示を更新
+            updateHistoryDisplay(); // 棋譜表示を更新
+        }
+
+        let moveHistory = [];
+        let historyIndex = -1;
+
+        let currentPlayer = "△"; // currentPlayer変数の宣言
+        let showHistory = true; // 棋譜の表示/非表示フラグ
+        let previousGameHistory = []; // 前回の試合の棋譜
+
+        // 棋譜表示の更新
+        function updateHistoryDisplay() {
+            const historyDiv = document.getElementById("history");
+            if (showHistory) {
+                historyDiv.innerHTML = "<h2>棋譜</h2>";
+                moveHistory.forEach((move, index) => {
+                    const fromCol = String.fromCharCode(65 + parseInt(move.from.col));
+                    const toCol = String.fromCharCode(65 + parseInt(move.to.col));
+                    const moveText = `${index + 1}. ${move.from.piece} ${fromCol}${parseInt(move.from.row) + 1} -> ${toCol}${parseInt(move.to.row) + 1} ${move.to.piece ? `(capture ${move.to.piece})` : ""}`;
+                    const moveP = document.createElement("p");
+                    moveP.textContent = moveText;
+                    historyDiv.appendChild(moveP);
+                });
+            } else {
+                historyDiv.innerHTML = "";
+            }
+        }
+
+        // 棋譜の表示/非表示を切り替え
+        function toggleHistory() {
+            showHistory = !showHistory;
+            updateHistoryDisplay();
+        }
+
+        function updateTurnDisplay() {
+            document.getElementById("turnDisplay").textContent = `現在のターン: ${currentPlayer}`;
+        }
+
+        function handleCellClick(cell) {
+    if (selectedPiece) {
+        clearHighlights();
+        const targetPiece = cell.firstChild;
+        if (targetPiece && targetPiece.textContent.includes(selectedPiece.textContent.includes("△") ? "△" : "▼")) {
+            selectedPiece = null;
+            selectedCell.classList.remove("selected");
+            selectedCell = null;
+            return;
+        }
+        if (targetPiece && targetPiece.textContent.includes("王")) {
+            showVictoryModal(currentPlayer); // 修正：currentPlayerを表示
+        }
+        if (targetPiece && selectedPiece.textContent.includes("×木")) {
+            selectedPiece = null;
+            selectedCell.classList.remove("selected");
+            selectedCell = null;
+            return;
+        }
+        const move = {
+            from: { row: selectedCell.dataset.row, col: selectedCell.dataset.col, piece: selectedPiece.textContent },
+            to: { row: cell.dataset.row, col: cell.dataset.col, piece: targetPiece ? targetPiece.textContent : null }
+        };
+        moveHistory = moveHistory.slice(0, historyIndex + 1);
+        moveHistory.push(move);
+        historyIndex++;
+        if (targetPiece && targetPiece.textContent.includes("×木")) {
+            selectedCell.innerHTML = "";
+            cell.removeChild(targetPiece);
+            transformNearestWoodToFox(cell.dataset.row, cell.dataset.col, currentPlayer);
+            cell.appendChild(selectedPiece);
+        } else {
+            selectedCell.innerHTML = "";
+            if (targetPiece) {
+                cell.removeChild(targetPiece);
+            }
+            cell.appendChild(selectedPiece);
+        }
+        selectedPiece = null;
+        selectedCell.classList.remove("selected");
+        selectedCell = null;
+        currentPlayer = currentPlayer === "△" ? "▼" : "△";
+        updateTurnDisplay();
+        updateHistoryDisplay();
+        updateWoodHighlight();
+    } else if (cell.firstChild) {
+        if (cell.firstChild.textContent.includes(currentPlayer) || cell.firstChild.textContent.includes("×木")) {
+            selectedPiece = cell.firstChild;
+            selectedCell = cell;
+            cell.classList.add("selected");
+            highlightValidMoves(cell.dataset.row, cell.dataset.col, selectedPiece.textContent);
+        }
+    }
+}
+
+function showVictoryModal(winner) {
+    document.getElementById("victory-message").textContent = `${winner}の勝利！`;
+    document.getElementById("victory-modal").style.display = "block";
+}
+
+document.getElementById("reset-button").addEventListener("click", () => {
+    document.getElementById("victory-modal").style.display = "none";
+    resetBoard();
+});
+
+function transformNearestWoodToFox(row, col, currentPlayer) {
+    let nearestWood = findNearestOtherWood(row, col); // 関数名を変更
+    if (nearestWood) {
+        nearestWood.cell.innerHTML = currentPlayer === "△" ? "▼狐" : "△狐";
+    }
+}
+
+function findNearestOtherWood(row, col) { // 関数名を変更
+    let minDistance = Infinity;
+    let nearestWood = null;
+    for (let i = 0; i < 9; i++) {
+        for (let j = 0; j < 9; j++) {
+            const cell = document.querySelector(`.cell[data-row='${i}'][data-col='${j}']`);
+            if (cell && cell.firstChild && cell.firstChild.textContent.includes("×木") && (i !== parseInt(row) || j !== parseInt(col))) { // 取られた木を除外
+                const distance = Math.abs(row - i) + Math.abs(col - j);
+                if (distance < minDistance) {
+                    minDistance = distance;
+                    nearestWood = { cell, row: i, col: j };
+                }
+            }
+        }
+    }
+    return nearestWood;
+}
+
+function updateWoodHighlight() {
+    for (let i = 0; i < 9; i++) {
+        for (let j = 0; j < 9; j++) {
+            const cell = document.querySelector(`.cell[data-row='${i}'][data-col='${j}']`);
+            if (cell && cell.firstChild && cell.firstChild.textContent.includes("×木")) {
+                let isAdjacentToOfficer = false;
+                for (let dr = -1; dr <= 1; dr++) {
+                    for (let dc = -1; dc <= 1; dc++) {
+                        if (dr === 0 && dc === 0) continue;
+                        let officerRow = i + dr;
+                        let officerCol = j + dc;
+                        if (officerRow >= 0 && officerRow < 9 && officerCol >= 0 && officerCol < 9) {
+                            const officerCell = document.querySelector(`.cell[data-row='${officerRow}'][data-col='${officerCol}']`);
+                            if (officerCell && officerCell.firstChild && officerCell.firstChild.textContent.includes("官")) {
+                                isAdjacentToOfficer = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (isAdjacentToOfficer) break;
+                }
+                if (isAdjacentToOfficer) {
+                    cell.classList.add("valid-wood");
+                } else {
+                    cell.classList.remove("valid-wood");
+                }
+            }
+        }
+    }
+}
+
+        function highlightValidMoves(row, col, piece) {
+    row = parseInt(row);
+    col = parseInt(col);
+    let moves = [];
+    let moveTypes = []; // 移動タイプを格納する配列
+
+    if (piece.includes("王")) {
+        moves = [
+            [row - 1, col - 1], [row - 1, col], [row - 1, col + 1],
+            [row, col - 1], [row, col + 1],
+            [row + 1, col - 1], [row + 1, col], [row + 1, col + 1]
+        ];
+    } else if (piece.includes("兵")) {
+        moves = piece.includes("△") ? [[row - 1, col]] : [[row + 1, col]];
+    } else if (piece.includes("槍")) {
+        // 槍の移動処理
+        const direction = piece.includes("△") ? [-1, 0] : [1, 0];
+        const sideDirection = piece.includes("△") ? [-1, 1] : [1, 1];
+        const oppositeSideDirection = piece.includes("△") ? [-1, -1] : [1, -1];
+
+        // 正面2マスの移動
+        let r1 = row + direction[0];
+        let c1 = col;
+        if (r1 >= 0 && r1 < 9 && c1 >= 0 && c1 < 9) {
+            const targetCell1 = document.querySelector(`.cell[data-row='${r1}'][data-col='${c1}']`);
+            if (!targetCell1.firstChild) {
+                let r2 = row + direction[0] * 2;
+                let c2 = col;
+                if (r2 >= 0 && r2 < 9 && c2 >= 0 && c2 < 9) {
+                    const targetCell2 = document.querySelector(`.cell[data-row='${r2}'][data-col='${c2}']`);
+                    if (targetCell2) {
+                        if (targetCell2.firstChild) {
+                            if (targetCell2.firstChild.textContent.includes(piece.includes("△") ? "▼" : "△")) {
+                                moves.push([r2, c2]);
+                                moveTypes.push("move");
+                            }
+                        } else {
+                            moves.push([r2, c2]);
+                            moveTypes.push("path-vertical");
+                        }
+                    }
+                }
+            } else if (targetCell1.firstChild.textContent.includes(piece.includes("△") ? "▼" : "△")) {
+                moves.push([r1, c1]);
+                moveTypes.push("move");
+            }
+        }
+
+        // 斜め1マスの移動
+        let sideR = row + sideDirection[0];
+        let sideC = col + sideDirection[1];
+        if (sideR >= 0 && sideR < 9 && sideC >= 0 && sideC < 9) {
+            const sideTargetCell = document.querySelector(`.cell[data-row='${sideR}'][data-col='${sideC}']`);
+            if (!sideTargetCell.firstChild) {
+                moves.push([sideR, sideC]);
+                moveTypes.push("move");
+            }
+        }
+
+        let oppositeSideR = row + oppositeSideDirection[0];
+        let oppositeSideC = col + oppositeSideDirection[1];
+        if (oppositeSideR >= 0 && oppositeSideR < 9 && oppositeSideC >= 0 && oppositeSideC < 9) {
+            const oppositeSideTargetCell = document.querySelector(`.cell[data-row='${oppositeSideR}'][data-col='${oppositeSideC}']`);
+            if (!oppositeSideTargetCell.firstChild) {
+                moves.push([oppositeSideR, oppositeSideC]);
+                moveTypes.push("move");
+            }
+        }
+
+    } else if (piece.includes("弓")) {
+        // 弓の移動処理
+        const direction = piece.includes("△") ? [-2, 0] : [2, 0];
+        const sideDirection = piece.includes("△") ? [-2, 2] : [2, 2];
+        const oppositeSideDirection = piece.includes("△") ? [-2, -2] : [2, -2];
+
+        // 正面2マスの移動
+        let r1 = row + direction[0] / 2;
+        let c1 = col;
+        if (r1 >= 0 && r1 < 9 && c1 >= 0 && c1 < 9) {
+            const targetCell1 = document.querySelector(`.cell[data-row='${r1}'][data-col='${c1}']`);
+            if (!targetCell1.firstChild) {
+                let r2 = row + direction[0];
+                let c2 = col;
+                if (r2 >= 0 && r2 < 9 && c2 >= 0 && c2 < 9) {
+                    const targetCell2 = document.querySelector(`.cell[data-row='${r2}'][data-col='${c2}']`);
+                    if (targetCell2) {
+                        if (targetCell2.firstChild) {
+                            if (targetCell2.firstChild.textContent.includes(piece.includes("△") ? "▼" : "△") || targetCell2.firstChild.textContent.includes("×木")) {
+                                moves.push([r2, c2]);
+                                moveTypes.push("move");
+                            }
+                        } else {
+                            moves.push([r2, c2]);
+                            moveTypes.push("move");
+                        }
+                    }
+                }
+            }
+        }
+
+        // 斜め2マスの移動
+        let sideR1 = row + sideDirection[0] / 2;
+        let sideC1 = col + sideDirection[1] / 2;
+        if (sideR1 >= 0 && sideR1 < 9 && sideC1 >= 0 && sideC1 < 9) {
+            const sideTargetCell1 = document.querySelector(`.cell[data-row='${sideR1}'][data-col='${sideC1}']`);
+            if (!sideTargetCell1.firstChild) {
+                let sideR2 = row + sideDirection[0];
+                let sideC2 = col + sideDirection[1];
+                if (sideR2 >= 0 && sideR2 < 9 && sideC2 >= 0 && sideC2 < 9) {
+                    const sideTargetCell2 = document.querySelector(`.cell[data-row='${sideR2}'][data-col='${sideC2}']`);
+                    if (sideTargetCell2) {
+                        if (sideTargetCell2.firstChild) {
+                            if (sideTargetCell2.firstChild.textContent.includes(piece.includes("△") ? "▼" : "△") || sideTargetCell2.firstChild.textContent.includes("×木")) {
+                                moves.push([sideR2, sideC2]);
+                                moveTypes.push("move");
+                            }
+                        } else {
+                            moves.push([sideR2, sideC2]);
+                            moveTypes.push("move");
+                        }
+                    }
+                }
+            }
+        }
+
+        // 反対斜め2マスの移動
+        let oppositeSideR1 = row + oppositeSideDirection[0] / 2;
+        let oppositeSideC1 = col + oppositeSideDirection[1] / 2;
+        if (oppositeSideR1 >= 0 && oppositeSideR1 < 9 && oppositeSideC1 >= 0 && oppositeSideC1 < 9) {
+            const oppositeSideTargetCell1 = document.querySelector(`.cell[data-row='${oppositeSideR1}'][data-col='${oppositeSideC1}']`);
+            if (!oppositeSideTargetCell1.firstChild) {
+                let oppositeSideR2 = row + oppositeSideDirection[0];
+                let oppositeSideC2 = col + oppositeSideDirection[1];
+                if (oppositeSideR2 >= 0 && oppositeSideR2 < 9 && oppositeSideC2 >= 0 && oppositeSideC2 < 9) {
+                    const oppositeSideTargetCell2 = document.querySelector(`.cell[data-row='${oppositeSideR2}'][data-col='${oppositeSideC2}']`);
+                    if (oppositeSideTargetCell2) {
+                        if (oppositeSideTargetCell2.firstChild) {
+                            if (oppositeSideTargetCell2.firstChild.textContent.includes(piece.includes("△") ? "▼" : "△") || oppositeSideTargetCell2.firstChild.textContent.includes("×木")) {
+                                moves.push([oppositeSideR2, oppositeSideC2]);
+                                moveTypes.push("move");
+                            }
+                        } else {
+                            moves.push([oppositeSideR2, oppositeSideC2]);
+                            moveTypes.push("move");
+                        }
+                    }
+                }
+            }
+        }
+
+    } else if (piece.includes("盾")) {
+            // 盾の移動処理
+            const direction = piece.includes("△") ? [-1, 0] : [1, 0];
+            const sideDirection = piece.includes("△") ? [-1, 1] : [1, 1];
+            const oppositeSideDirection = piece.includes("△") ? [-1, -1] : [1, -1];
+
+            // 正面1マスの移動
+            let r = row + direction[0];
+            let c = col;
+            if (r >= 0 && r < 9 && c >= 0 && c < 9) {
+                const targetCell = document.querySelector(`.cell[data-row='${r}'][data-col='${c}']`);
+                if (targetCell) {
+                    if (targetCell.firstChild) {
+                        if (targetCell.firstChild.textContent.includes(piece.includes("△") ? "▼" : "△") || targetCell.firstChild.textContent.includes("×木")) {
+                            moves.push([r, c]);
+                            moveTypes.push("move");
+                        }
+                    } else {
+                        moves.push([r, c]);
+                        moveTypes.push("move");
+                    }
+                }
+            }
+
+            // 斜め1マスの移動
+            let sideR = row + sideDirection[0];
+            let sideC = col + sideDirection[1];
+            if (sideR >= 0 && sideR < 9 && sideC >= 0 && sideC < 9) {
+                const sideTargetCell = document.querySelector(`.cell[data-row='${sideR}'][data-col='${sideC}']`);
+                if (sideTargetCell) {
+                    if (sideTargetCell.firstChild) {
+                        if (sideTargetCell.firstChild.textContent.includes(piece.includes("△") ? "▼" : "△") || sideTargetCell.firstChild.textContent.includes("×木")) {
+                            moves.push([sideR, sideC]);
+                            moveTypes.push("move");
+                        }
+                    } else {
+                        moves.push([sideR, sideC]);
+                        moveTypes.push("move");
+                    }
+                }
+            }
+
+            // 反対斜め1マスの移動
+            let oppositeSideR = row + oppositeSideDirection[0];
+            let oppositeSideC = col + oppositeSideDirection[1];
+            if (oppositeSideR >= 0 && oppositeSideR < 9 && oppositeSideC >= 0 && oppositeSideC < 9) {
+                const oppositeSideTargetCell = document.querySelector(`.cell[data-row='${oppositeSideR}'][data-col='${oppositeSideC}']`);
+                if (oppositeSideTargetCell) {
+                    if (oppositeSideTargetCell.firstChild) {
+                        if (oppositeSideTargetCell.firstChild.textContent.includes(piece.includes("△") ? "▼" : "△") || oppositeSideTargetCell.firstChild.textContent.includes("×木")) {
+                            moves.push([oppositeSideR, oppositeSideC]);
+                            moveTypes.push("move");
+                        }
+                    } else {
+                        moves.push([oppositeSideR, oppositeSideC]);
+                        moveTypes.push("move");
+                    }
+                }
+            }
+
+        } else if (piece.includes("臣")) {
+        // 臣の移動処理
+        const directions = [
+            [-1, -1], [-1, 1], [1, -1], [1, 1]
+        ];
+
+        directions.forEach(([dr, dc]) => {
+            let r = row + dr;
+            let c = col + dc;
+            while (r >= 0 && r < 9 && c >= 0 && c < 9) {
+                const targetCell = document.querySelector(`.cell[data-row='${r}'][data-col='${c}']`);
+                if (targetCell) {
+                    if (targetCell.firstChild) {
+                        if (targetCell.firstChild.textContent.includes(piece.includes("△") ? "△" : "▼")) {
+                            break; // 味方の駒がある場合はそこで終了
+                        } else {
+                            moves.push([r, c]);
+                            moveTypes.push("move");
+                            break; // 敵の駒や木がある場合はそこまで
+                        }
+                    } else {
+                        moves.push([r, c]);
+                        moveTypes.push("move");
+                    }
+                    r += dr;
+                    c += dc;
+                } else {
+                    break;
+                }
+            }
+        });
+
+    } else if (piece.includes("官")) {
+            // 官の移動処理
+            const directions = [
+                [-1, 0], [1, 0], [0, -1], [0, 1]
+            ];
+
+            directions.forEach(([dr, dc]) => {
+                let r = row + dr;
+                let c = col + dc;
+                if (r >= 0 && r < 9 && c >= 0 && c < 9) {
+                    const targetCell = document.querySelector(`.cell[data-row='${r}'][data-col='${c}']`);
+                    if (targetCell) {
+                        if (targetCell.firstChild) {
+                            if (targetCell.firstChild.textContent.includes(piece.includes("△") ? "▼" : "△") || targetCell.firstChild.textContent.includes("×木")) {
+                                moves.push([r, c]);
+                                moveTypes.push("move");
+                            }
+                        } else {
+                            moves.push([r, c]);
+                            moveTypes.push("move");
+                        }
+                    }
+                }
+            });
+        
+
+        } else if (piece.includes("馬")) {
+        // 馬の移動処理
+        const directions = [
+            [-2, -1], [-2, 1], [-1, -2], [-1, 2],
+            [1, -2], [1, 2], [2, -1], [2, 1]
+        ];
+
+        directions.forEach(([dr, dc]) => {
+            let r = row + dr;
+            let c = col + dc;
+            if (r >= 0 && r < 9 && c >= 0 && c < 9) {
+                const targetCell = document.querySelector(`.cell[data-row='${r}'][data-col='${c}']`);
+                if (targetCell) {
+                    if (targetCell.firstChild) {
+                        if (targetCell.firstChild.textContent.includes(piece.includes("△") ? "▼" : "△") || targetCell.firstChild.textContent.includes("×木")) {
+                            moves.push([r, c]);
+                            moveTypes.push("move");
+                        }
+                    } else {
+                        moves.push([r, c]);
+                        moveTypes.push("move");
+                    }
+                }
+            }
+        });
+    
+
+    } else if (piece.includes("車")) {
+            // 車の移動処理
+            const directions = [
+                [-1, 0], [1, 0], [0, -1], [0, 1]
+            ];
+
+            directions.forEach(([dr, dc]) => {
+                let r = row + dr;
+                let c = col + dc;
+                while (r >= 0 && r < 9 && c >= 0 && c < 9) {
+                    const targetCell = document.querySelector(`.cell[data-row='${r}'][data-col='${c}']`);
+                    if (targetCell) {
+                        if (targetCell.firstChild) {
+                            if (targetCell.firstChild.textContent.includes(piece.includes("△") ? "△" : "▼")) {
+                                break; // 味方の駒がある場合はそこで終了
+                            } else {
+                                moves.push([r, c]);
+                                moveTypes.push("move");
+                                break; // 敵の駒や木がある場合はそこまで
+                            }
+                        } else {
+                            moves.push([r, c]);
+                            moveTypes.push("move");
+                        }
+                        r += dr;
+                        c += dc;
+                    } else {
+                        break;
+                    }
+                }
+            });
+
+        } else if (piece.includes("×木")) {
+        // 木の移動処理
+        const directions = [
+            [-1, 0], [1, 0], [0, -1], [0, 1],
+            [-1, -1], [-1, 1], [1, -1], [1, 1]
+        ];
+
+        directions.forEach(([dr, dc]) => {
+            let r = row + dr;
+            let c = col + dc;
+            if (r >= 0 && r < 9 && c >= 0 && c < 9) {
+                const targetCell = document.querySelector(`.cell[data-row='${r}'][data-col='${c}']`);
+                if (!targetCell.firstChild) {
+                    moves.push([r, c]);
+                    moveTypes.push("move");
+                }
+            }
+        });
+
+    } else if (piece.includes("狐")) {
+            // 狐の移動処理
+            const directions = [
+                [-1, 0], [1, 0], [0, -1], [0, 1],
+                [-1, -1], [-1, 1], [1, -1], [1, 1]
+            ];
+
+            directions.forEach(([dr, dc]) => {
+                let r = row + dr;
+                let c = col + dc;
+                while (r >= 0 && r < 9 && c >= 0 && c < 9) {
+                    const targetCell = document.querySelector(`.cell[data-row='${r}'][data-col='${c}']`);
+                    if (targetCell) {
+                        if (targetCell.firstChild) {
+                            if (targetCell.firstChild.textContent.includes(piece.includes("△") ? "△" : "▼")) {
+                                break; // 味方の駒がある場合はそこで終了
+                            } else {
+                                moves.push([r, c]);
+                                moveTypes.push("move");
+                                break; // 敵の駒や木がある場合はそこまで
+                            }
+                        } else {
+                            moves.push([r, c]);
+                            moveTypes.push("move");
+                        }
+                        r += dr;
+                        c += dc;
+                    } else {
+                        break;
+                    }
+                }
+            });
+        }
+
+    moves.forEach(([r, c], index) => { //indexを削除
+        if (r >= 0 && r < 9 && c >= 0 && c < 9) {
+            const targetCell = document.querySelector(`.cell[data-row='${r}'][data-col='${c}']`);
+            if (targetCell) {
+                targetCell.classList.add("valid-move");
+            } else {
+                console.error(`highlightValidMoves: cell not found at row=${r}, col=${c}`);
+            }
+        }
+    });
+
+    // 官が周囲1マスにいる木をピンクにハイライト
+    for (let i = 0; i < 9; i++) {
+        for (let j = 0; j < 9; j++) {
+            const cell = document.querySelector(`.cell[data-row='${i}'][data-col='${j}']`);
+            if (cell && cell.firstChild && cell.firstChild.textContent.includes("×木")) {
+                let isAdjacentToOfficer = false;
+                for (let dr = -1; dr <= 1; dr++) {
+                    for (let dc = -1; dc <= 1; dc++) {
+                        if (dr === 0 && dc === 0) continue;
+                        let officerRow = i + dr;
+                        let officerCol = j + dc;
+                        if (officerRow >= 0 && officerRow < 9 && officerCol >= 0 && officerCol < 9) {
+                            const officerCell = document.querySelector(`.cell[data-row='${officerRow}'][data-col='${officerCol}']`);
+                            if (officerCell && officerCell.firstChild && officerCell.firstChild.textContent.includes("官")) {
+                                isAdjacentToOfficer = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (isAdjacentToOfficer) break;
+                }
+                if (isAdjacentToOfficer) {
+                    cell.classList.add("valid-wood");
+                } else {
+                    cell.classList.remove("valid-wood");
+                }
+            }
+        }
+    }
+    updateWoodHighlight(); // 木のハイライトを更新
+}
+
+        function clearHighlights() {
+            document.querySelectorAll(".valid-move").forEach(cell => cell.classList.remove("valid-move"));
+            document.querySelectorAll(".path-horizontal").forEach(cell => cell.classList.remove("path-horizontal"));
+            document.querySelectorAll(".path-vertical").forEach(cell => cell.classList.remove("path-vertical"));
+            document.querySelectorAll(".unlimited-move").forEach(cell => cell.classList.remove("unlimited-move"));
+            document.querySelectorAll(".valid-wood").forEach(cell => cell.classList.remove("valid-wood")); // 木のハイライトをクリア
+        }
+
+        function undoMove() {
+        if (historyIndex >= 0) {
+            const move = moveHistory[historyIndex];
+            const fromCell = document.querySelector(`.cell[data-row='${move.from.row}'][data-col='${move.from.col}']`);
+            const toCell = document.querySelector(`.cell[data-row='${move.to.row}'][data-col='${move.to.col}']`);
+        if (fromCell && toCell) { // fromCellとtoCellが存在する場合のみ処理
+            fromCell.innerHTML = "";
+            toCell.innerHTML = "";
+            const piece = document.createElement("span");
+            piece.classList.add("piece");
+            piece.textContent = move.from.piece;
+            fromCell.appendChild(piece);
+            if (move.to.piece) {
+                const capturedPiece = document.createElement("span");
+                capturedPiece.classList.add("piece");
+                capturedPiece.textContent = move.to.piece;
+                toCell.appendChild(capturedPiece);
+            }
+            currentPlayer = currentPlayer === "△" ? "▼" : "△";
+            updateWoodHighlight(); // 木のハイライトを更新
+            updateTurnDisplay();
+            updateHistoryDisplay(); // 棋譜表示を更新
+            historyIndex--;
+        } else {
+            console.error("undoMove: fromCell or toCell not found");
+        }
+    }
+}
+
+        function redoMove() {
+            if (historyIndex < moveHistory.length - 1) {
+                historyIndex++;
+                const move = moveHistory[historyIndex];
+                const fromCell = document.querySelector(`.cell[data-row='<span class="math-inline">\{move\.from\.row\}'\]\[data\-col\='</span>{move.from.col}']`);
+                const toCell = document.querySelector(`.cell[data-row='<span class="math-inline">\{move\.to\.row\}'\]\[data\-col\='</span>{move.to.col}']`);
+                fromCell.innerHTML = "";
+                if (toCell.firstChild) {
+                    toCell.removeChild(toCell.firstChild);
+                }
+                const piece = document.createElement("span");
+                piece.classList.add("piece");
+                piece.textContent = move.from.piece;
+                toCell.appendChild(piece);
+                currentPlayer = currentPlayer === "△" ? "▼" : "△";
+                updateWoodHighlight(); // 木のハイライトを更新
+                updateTurnDisplay(); // ターン表示を更新
+                updateHistoryDisplay(); // 棋譜表示を更新
+            }
+        }
+
+        function resetBoard() {
+            moveHistory = [];
+            historyIndex = -1;
+            currentPlayer = "△"; // ターンをリセット
+            createBoard();
+            updateWoodHighlight(); // 木のハイライトを更新
+            updateTurnDisplay(); // ターン表示を更新
+            updateHistoryDisplay(); // 棋譜表示を更新
+        }
+
+        function resign() {
+        const winner = currentPlayer === "△" ? "▼" : "△";
+        alert(`${winner}の勝利！`);
+        resetBoard();
+    }
+
+        createBoard();
+    </script>
 </body>
 </html>
