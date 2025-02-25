@@ -290,61 +290,67 @@ function updateWoodHighlight() {
         ];
     } else if (piece.includes("兵")) {
         moves = piece.includes("△") ? [[row - 1, col]] : [[row + 1, col]];
-    } else if (piece.includes("槍")) {
-        // 槍の移動処理
-        const direction = piece.includes("△") ? [-1, 0] : [1, 0];
-        const sideDirection = piece.includes("△") ? [-1, 1] : [1, 1];
-        const oppositeSideDirection = piece.includes("△") ? [-1, -1] : [1, -1];
+} else if (piece.includes("槍")) {
+    // 槍の移動処理
+    const direction = piece.includes("△") ? [-1, 0] : [1, 0];
+    const sideDirection = piece.includes("△") ? [-1, 1] : [1, 1];
+    const oppositeSideDirection = piece.includes("△") ? [-1, -1] : [1, -1];
 
-        // 正面2マスの移動
-        let r1 = row + direction[0];
-        let c1 = col;
-        if (r1 >= 0 && r1 < 9 && c1 >= 0 && c1 < 9) {
-            const targetCell1 = document.querySelector(`.cell[data-row='${r1}'][data-col='${c1}']`);
-            if (!targetCell1.firstChild) {
-                let r2 = row + direction[0] * 2;
-                let c2 = col;
-                if (r2 >= 0 && r2 < 9 && c2 >= 0 && c2 < 9) {
-                    const targetCell2 = document.querySelector(`.cell[data-row='${r2}'][data-col='${c2}']`);
-                    if (targetCell2) {
-                        if (targetCell2.firstChild) {
-                            if (targetCell2.firstChild.textContent.includes(piece.includes("△") ? "▼" : "△")) {
-                                moves.push([r2, c2]);
-                                moveTypes.push("move");
-                            }
-                        } else {
+    // 正面2マスの移動
+    let r1 = row + direction[0];
+    let c1 = col;
+    if (r1 >= 0 && r1 < 9 && c1 >= 0 && c1 < 9) {
+        const targetCell1 = document.querySelector(`.cell[data-row='${r1}'][data-col='${c1}']`);
+        if (!targetCell1.firstChild) {
+            let r2 = row + direction[0] * 2;
+            let c2 = col;
+            if (r2 >= 0 && r2 < 9 && c2 >= 0 && c2 < 9) {
+                const targetCell2 = document.querySelector(`.cell[data-row='${r2}'][data-col='${c2}']`);
+                if (targetCell2) {
+                    if (targetCell2.firstChild) {
+                        if (targetCell2.firstChild.textContent.includes(piece.includes("△") ? "▼" : "△")) {
                             moves.push([r2, c2]);
-                            moveTypes.push("path-vertical");
+                            moveTypes.push("move");
                         }
+                    } else {
+                        moves.push([r2, c2]);
+                        moveTypes.push("path-vertical");
                     }
                 }
-            } else if (targetCell1.firstChild.textContent.includes(piece.includes("△") ? "▼" : "△")) {
-                moves.push([r1, c1]);
-                moveTypes.push("move");
             }
+        } else if (targetCell1.firstChild.textContent.includes(piece.includes("△") ? "▼" : "△")) {
+            moves.push([r1, c1]);
+            moveTypes.push("move");
         }
+    }
 
-        // 斜め1マスの移動
-        let sideR = row + sideDirection[0];
-        let sideC = col + sideDirection[1];
-        if (sideR >= 0 && sideR < 9 && sideC >= 0 && sideC < 9) {
-            const sideTargetCell = document.querySelector(`.cell[data-row='${sideR}'][data-col='${sideC}']`);
-            if (!sideTargetCell.firstChild) {
-                moves.push([sideR, sideC]);
-                moveTypes.push("move");
-            }
+    // 斜め1マスの移動
+    let sideR = row + sideDirection[0];
+    let sideC = col + sideDirection[1];
+    if (sideR >= 0 && sideR < 9 && sideC >= 0 && sideC < 9) {
+        const sideTargetCell = document.querySelector(`.cell[data-row='${sideR}'][data-col='${sideC}']`);
+        if (sideTargetCell.firstChild && sideTargetCell.firstChild.textContent.includes(piece.includes("△") ? "▼" : "△")) { // 敵駒がいる場合
+            moves.push([sideR, sideC]);
+            moveTypes.push("move");
+        } else if (!sideTargetCell.firstChild) { // 空の場合
+            moves.push([sideR, sideC]);
+            moveTypes.push("move");
         }
+    }
 
-        let oppositeSideR = row + oppositeSideDirection[0];
-        let oppositeSideC = col + oppositeSideDirection[1];
-        if (oppositeSideR >= 0 && oppositeSideR < 9 && oppositeSideC >= 0 && oppositeSideC < 9) {
-            const oppositeSideTargetCell = document.querySelector(`.cell[data-row='${oppositeSideR}'][data-col='${oppositeSideC}']`);
-            if (!oppositeSideTargetCell.firstChild) {
-                moves.push([oppositeSideR, oppositeSideC]);
-                moveTypes.push("move");
-            }
+    let oppositeSideR = row + oppositeSideDirection[0];
+    let oppositeSideC = col + oppositeSideDirection[1];
+    if (oppositeSideR >= 0 && oppositeSideR < 9 && oppositeSideC >= 0 && oppositeSideC < 9) {
+        const oppositeSideTargetCell = document.querySelector(`.cell[data-row='${oppositeSideR}'][data-col='${oppositeSideC}']`);
+        if (oppositeSideTargetCell.firstChild && oppositeSideTargetCell.firstChild.textContent.includes(piece.includes("△") ? "▼" : "△")) { // 敵駒がいる場合
+            moves.push([oppositeSideR, oppositeSideC]);
+            moveTypes.push("move");
+        } else if (!oppositeSideTargetCell.firstChild) { // 空の場合
+            moves.push([oppositeSideR, oppositeSideC]);
+            moveTypes.push("move");
         }
-
+    }
+        
     } else if (piece.includes("弓")) {
         // 弓の移動処理
         const direction = piece.includes("△") ? [-2, 0] : [2, 0];
