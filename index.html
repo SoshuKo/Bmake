@@ -52,6 +52,10 @@
     <h1>ブマケ</h1>
     <div class="board" id="board"></div>
     <div>
+        <button onclick="setGameMode('cpu')">CPU対戦</button>
+        <button onclick="setGameMode('local')">ローカル対戦</button>
+    </div>
+    <div>
         <button onclick="undoMove()">Undo</button>
         <button onclick="redoMove()">Redo</button>
         <button onclick="resetBoard()">Reset</button>
@@ -79,6 +83,15 @@
             ["△兵", "△兵", "△兵", "△兵", "△盾", "△兵", "△兵", "△兵", "△兵"],
             ["△車", "△馬", "△弓", "△官", "△王", "△臣", "△槍", "△馬", "△車"]
         ];
+
+        let gameMode = "cpu"; // デフォルトはCPU対戦
+
+        // ゲームモードを変更
+        function setGameMode(mode) {
+            gameMode = mode;
+            resetBoard();
+            alert(`ゲームモード: ${mode === "cpu" ? "CPU対戦" : "ローカル対戦"} に変更`);
+        }
 
         function createBoard() {
             board.innerHTML = "";
@@ -155,7 +168,8 @@
             document.getElementById("turnDisplay").textContent = `現在のターン: ${currentPlayer}`;
         }
 
-        function handleCellClick(cell) {
+// 手番を処理する関数（ローカル対戦かCPU対戦かで処理を分岐）
+function handleCellClick(cell) {
     if (selectedPiece) {
         clearHighlights();
         const targetPiece = cell.firstChild;
@@ -166,33 +180,21 @@
             return;
         }
         if (targetPiece && targetPiece.textContent.includes("王")) {
-            showVictoryModal(currentPlayer); // 修正：currentPlayerを表示
-        }
-        if (targetPiece && selectedPiece.textContent.includes("×木")) {
-            selectedPiece = null;
-            selectedCell.classList.remove("selected");
-            selectedCell = null;
-            return;
+            showVictoryModal(currentPlayer);
         }
         const move = {
             from: { row: selectedCell.dataset.row, col: selectedCell.dataset.col, piece: selectedPiece.textContent },
             to: { row: cell.dataset.row, col: cell.dataset.col, piece: targetPiece ? targetPiece.textContent : null }
         };
-        moveHistory = moveHistory.slice(0, historyIndex + 1);
         moveHistory.push(move);
         historyIndex++;
-        if (targetPiece && targetPiece.textContent.includes("×木")) {
-            selectedCell.innerHTML = "";
+
+        selectedCell.innerHTML = "";
+        if (targetPiece) {
             cell.removeChild(targetPiece);
-            transformNearestWoodToFox(cell.dataset.row, cell.dataset.col, currentPlayer);
-            cell.appendChild(selectedPiece);
-        } else {
-            selectedCell.innerHTML = "";
-            if (targetPiece) {
-                cell.removeChild(targetPiece);
-            }
-            cell.appendChild(selectedPiece);
         }
+        cell.appendChild(selectedPiece);
+
         selectedPiece = null;
         selectedCell.classList.remove("selected");
         selectedCell = null;
@@ -200,6 +202,11 @@
         updateTurnDisplay();
         updateHistoryDisplay();
         updateWoodHighlight();
+
+        // CPU対戦モードならCPUを動かす
+        if (gameMode === "cpu" && currentPlayer === "▼") {
+            setTimeout(cpuMove, 500);
+        }
     } else if (cell.firstChild) {
         if (cell.firstChild.textContent.includes(currentPlayer) || cell.firstChild.textContent.includes("×木")) {
             selectedPiece = cell.firstChild;
@@ -771,54 +778,51 @@ function isWoodMovableByCPU(row, col, player) {
     return false;
 }
 
-// CPUの手を履歴に記録するよう修正
+// CPUの動作（CPU対戦モード時のみ実行）
 function cpuMove() {
-    if (currentPlayer === "▼") {
-        let pieces = Array.from(document.querySelectorAll(".piece"))
-            .filter(piece => piece.textContent.includes("▼"));
+    if (gameMode !== "cpu") return; // ローカル対戦モードなら動作しない
 
-        let moveCandidates = [];
+    let pieces = Array.from(document.querySelectorAll(".piece"))
+        .filter(piece => piece.textContent.includes("▼"));
 
-        pieces.forEach(piece => {
-            let cell = piece.parentElement;
-            let moves = getValidMovesForPiece(cell, piece);
-            if (moves.length > 0) {
-                moves.forEach(move => {
-                    moveCandidates.push({ piece, from: cell, to: move });
-                });
-            }
-        });
+    let moveCandidates = [];
 
-        if (moveCandidates.length === 0) {
-            return;
+    pieces.forEach(piece => {
+        let cell = piece.parentElement;
+        let moves = getValidMovesForPiece(cell, piece);
+        if (moves.length > 0) {
+            moves.forEach(move => {
+                moveCandidates.push({ piece, from: cell, to: move });
+            });
         }
+    });
 
-        let chosenMove = moveCandidates[Math.floor(Math.random() * moveCandidates.length)];
+    if (moveCandidates.length === 0) return;
 
-        let pieceElement = chosenMove.piece;
-        let fromCell = chosenMove.from;
-        let toCell = chosenMove.to;
+    let chosenMove = moveCandidates[Math.floor(Math.random() * moveCandidates.length)];
+    let pieceElement = chosenMove.piece;
+    let fromCell = chosenMove.from;
+    let toCell = chosenMove.to;
 
-        if (toCell.firstChild && toCell.firstChild.textContent.includes("王")) {
-            showVictoryModal(currentPlayer);
-        }
-
-        const move = {
-            from: { row: fromCell.dataset.row, col: fromCell.dataset.col, piece: pieceElement.textContent },
-            to: { row: toCell.dataset.row, col: toCell.dataset.col, piece: toCell.firstChild ? toCell.firstChild.textContent : null }
-        };
-        moveHistory.push(move);
-        historyIndex++;
-
-        fromCell.innerHTML = "";
-        toCell.innerHTML = "";
-        toCell.appendChild(pieceElement);
-
-        currentPlayer = "△";
-        updateTurnDisplay();
-        updateHistoryDisplay();
-        updateWoodHighlight();
+    if (toCell.firstChild && toCell.firstChild.textContent.includes("王")) {
+        showVictoryModal(currentPlayer);
     }
+
+    const move = {
+        from: { row: fromCell.dataset.row, col: fromCell.dataset.col, piece: pieceElement.textContent },
+        to: { row: toCell.dataset.row, col: toCell.dataset.col, piece: toCell.firstChild ? toCell.firstChild.textContent : null }
+    };
+    moveHistory.push(move);
+    historyIndex++;
+
+    fromCell.innerHTML = "";
+    toCell.innerHTML = "";
+    toCell.appendChild(pieceElement);
+
+    currentPlayer = "△";
+    updateTurnDisplay();
+    updateHistoryDisplay();
+    updateWoodHighlight();
 }
 
 // 木の周囲3×3を取得
